@@ -6,6 +6,8 @@ const cors = require("cors");
 const morgan = require("morgan");
 const port = process.env.PORT || 5000;
 
+const stripe = require("stripe")(process.env.PAYMENT_SECRET_KEY);
+
 // middleware
 const corsOptions = {
   origin: ["http://localhost:5173", "http://localhost:5174"],
@@ -35,6 +37,7 @@ async function run() {
     const usersCollection = client.db("trendBurst").collection("users");
     const productsCollection = client.db("trendBurst").collection("products");
     const cartsCollection = client.db("trendBurst").collection("carts");
+    const bookingsCollection = client.db("trendBurst").collection("bookings");
 
     // get all product
     app.get("/products", async (req, res) => {
@@ -48,34 +51,36 @@ async function run() {
     });
 
     // get single product
-    app.get('/products/:id', async(req, res) => {
+    app.get("/products/:id", async (req, res) => {
       const id = req.params.id;
-      const result = await productsCollection.findOne({_id: new ObjectId(id)});
+      const result = await productsCollection.findOne({
+        _id: new ObjectId(id),
+      });
       res.send(result);
-    })
+    });
 
     // post data to cart
-    app.post('/products/cart', async(req, res)=> {
+    app.post("/products/cart", async (req, res) => {
       const cart = req.body;
       const result = await cartsCollection.insertOne(cart);
       res.send(result);
-    })
+    });
 
     // get cart data
-    app.get('/carts', async(req, res)=>{
+    app.get("/carts", async (req, res) => {
       const email = req.query.userEmail;
-      const query = {email: email};
+      const query = { email: email };
       const result = await cartsCollection.find(query).toArray();
       res.send(result);
-    })
+    });
 
     // delete cart item
-    app.delete('/carts/:id', async(req, res)=>{
+    app.delete("/carts/:id", async (req, res) => {
       const id = req.params.id;
-      const query = {_id: new ObjectId(id)};
+      const query = { _id: new ObjectId(id) };
       const result = await cartsCollection.deleteOne(query);
       res.send(result);
-    })
+    });
 
     // Save or modify user email, status in Database
     app.put("/users", async (req, res) => {
@@ -92,6 +97,27 @@ async function run() {
       res.send(result);
     });
 
+    // generate client secret for payment intent
+    app.post("/create-payment-intent", async (req, res) => {
+      const { price } = req.body;
+      const amount = parseInt(price * 100);
+      if (!price || amount < 1) return;
+      const { client_secret } = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method_types: ["card"],
+      });
+      res.send({ clientSecret: client_secret });
+    });
+
+    // save booking info in bookingCollection
+    app.post("/bookings", async (req, res) => {
+      const booking = req.body;
+      const result = await bookingsCollection.insertOne(booking);
+      // send email
+      res.send(result);
+    });
+
     await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
@@ -104,9 +130,9 @@ async function run() {
 run().catch(console.dir);
 
 app.get("/", (req, res) => {
-  res.send("Hello from TrendBurst Server..");
+  res.send("Hello from Shoppe Server..");
 });
 
 app.listen(port, () => {
-  console.log(`TrendBurst is running on port ${port}`);
+  console.log(`Shoppe is running on port ${port}`);
 });
